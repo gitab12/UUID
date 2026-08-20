@@ -17,29 +17,62 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
+      # 1. Checkout source code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2. Install .NET 8
       - name: Setup .NET 8
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
 
+      # 3. Code formatting / lint check
+      - name: Code format check
+        run: dotnet format ./LongestIncreasingSubsequence.slnx --verify-no-changes
+
+      # 4. Restore NuGet packages
       - name: Restore
         run: dotnet restore ./LongestIncreasingSubsequence.slnx
 
+      # 5. Build solution
       - name: Build
         run: dotnet build ./LongestIncreasingSubsequence.slnx --configuration Release --no-restore
 
-      - name: Test
-        run: dotnet test ./Tests/LongestIncreasingSubsequence.Tests.csproj --configuration Release --no-build
+      # 6. Run unit tests with code coverage
+      - name: Test with coverage
+        run: |
+          dotnet test ./Tests/LongestIncreasingSubsequence.Tests.csproj \
+            --configuration Release \
+            --no-build \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./CoverageReport
 
+      # 7. Generate HTML coverage report
+      - name: Generate coverage report
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          reportgenerator \
+            "-reports:CoverageReport/**/coverage.cobertura.xml" \
+            "-targetdir:CoverageReport/Report" \
+            "-reporttypes:Html"
+
+      # 8. Upload coverage report as GitHub artifact
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-coverage-report
+          path: CoverageReport/Report
+
+      # 9. Build Docker image
       - name: Build Docker image
         run: |
           docker build \
             -t ghcr.io/${{ github.repository_owner }}/uuid:latest \
             .
 
+      # 10. Login to GitHub Container Registry
       - name: Login to GitHub Container Registry
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
@@ -47,6 +80,7 @@ jobs:
             -u "${{ github.actor }}" \
             --password-stdin
 
+      # 11. Push Docker image to GHCR
       - name: Push Docker image
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         run: |
